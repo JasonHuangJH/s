@@ -68,6 +68,7 @@ var defaultValueMap = map[string]string{
 	"subClashExt":        "",
 	"subClashNoDefGrp":   "false",
 	"subClashSprtAll":    "false",
+	"subClashUdp":        "false",
 	"globalReset":        "",
 	"globalResetLast":    "0",
 	"config":             defaultConfig,
@@ -404,6 +405,10 @@ func (s *SettingService) SaveConfig(tx *gorm.DB, config json.RawMessage) error {
 	return tx.Model(model.Setting{}).Where("key = ?", "config").Update("value", string(configs)).Error
 }
 
+func normalizeSettingValue(value string) string {
+	return strings.TrimSpace(value)
+}
+
 func (s *SettingService) Save(tx *gorm.DB, data json.RawMessage) error {
 	var err error
 	var settings map[string]string
@@ -412,6 +417,10 @@ func (s *SettingService) Save(tx *gorm.DB, data json.RawMessage) error {
 		return err
 	}
 	for key, obj := range settings {
+		// Ignore accidental surrounding whitespace while preserving spaces
+		// inside values such as certificate paths and URLs.
+		obj = normalizeSettingValue(obj)
+
 		// Secure file existence check
 		if obj != "" && (key == "webCertFile" ||
 			key == "webKeyFile" ||
@@ -469,6 +478,13 @@ func (s *SettingService) GetSubClashNoDefGrp() (bool, error) {
 // proxy tag.
 func (s *SettingService) GetSubClashSprtAll() (bool, error) {
 	return s.getBool("subClashSprtAll")
+}
+
+// GetSubClashUdp reports whether generated Clash proxies should carry
+// "udp: true" by default. Mihomo disables UDP unless the proxy opts in, so
+// without it VLESS/VMess/Trojan/... nodes reach the client with UDP off.
+func (s *SettingService) GetSubClashUdp() (bool, error) {
+	return s.getBool("subClashUdp")
 }
 
 func (s *SettingService) fileExists(path string) error {
