@@ -245,7 +245,7 @@ func (s *InboundService) GetAllConfig(db *gorm.DB) ([]json.RawMessage, error) {
 
 func (s *InboundService) hasUser(inboundType string) bool {
 	switch inboundType {
-	case "mixed", "socks", "http", "shadowsocks", "vmess", "trojan", "naive", "hysteria", "shadowtls", "tuic", "hysteria2", "vless", "anytls":
+	case "mixed", "socks", "http", "shadowsocks", "vmess", "trojan", "naive", "hysteria", "shadowtls", "tuic", "hysteria2", "vless", "anytls", "snell":
 		return true
 	}
 	return false
@@ -352,7 +352,11 @@ func (s *InboundService) enabledClientNames(tx *gorm.DB, inboundId uint) (map[st
 }
 
 func (s *InboundService) UpdateInboundsUsers(tx *gorm.DB, ids []uint) error {
-	if !corePtr.IsRunning() {
+	// Held for the whole loop below, which interleaves DB queries with core
+	// calls. Re-reading the instance after each query would let a restart
+	// swap the box mid-loop; a nil here just means the core is down.
+	box := corePtr.GetInstance()
+	if box == nil {
 		return nil
 	}
 	var inbounds []*model.Inbound
@@ -380,8 +384,9 @@ func (s *InboundService) UpdateInboundsUsers(tx *gorm.DB, ids []uint) error {
 			if err != nil {
 				return err
 			}
-			closed := corePtr.GetInstance().ConnTracker().CloseConnByInboundUsers(inbound.Tag, keep)
-			logger.Debug("updated users of inbound ", inbound.Tag, " in place, closed ", closed, " stale connections")
+			closed := box.SessionTracker().CloseByInboundUsers(inbound.Tag, keep)
+			cut := corePtr.CloseInboundUserSessions(inbound.Tag, keep)
+			logger.Debug("updated users of inbound ", inbound.Tag, " in place, closed ", closed, " stale connections and ", cut, " sessions")
 			continue
 		}
 
@@ -390,7 +395,7 @@ func (s *InboundService) UpdateInboundsUsers(tx *gorm.DB, ids []uint) error {
 		if err != nil && err != os.ErrInvalid {
 			return err
 		}
-		corePtr.GetInstance().ConnTracker().CloseConnByInbound(inbound.Tag)
+		box.SessionTracker().CloseByInbound(inbound.Tag)
 		err = corePtr.AddInbound(inboundConfig)
 		if err != nil {
 			return err
@@ -400,7 +405,8 @@ func (s *InboundService) UpdateInboundsUsers(tx *gorm.DB, ids []uint) error {
 }
 
 func (s *InboundService) RestartInbounds(tx *gorm.DB, ids []uint) error {
-	if !corePtr.IsRunning() {
+	box := corePtr.GetInstance()
+	if box == nil {
 		return nil
 	}
 	var inbounds []*model.Inbound
@@ -414,7 +420,7 @@ func (s *InboundService) RestartInbounds(tx *gorm.DB, ids []uint) error {
 			return err
 		}
 		// Close all existing connections
-		corePtr.GetInstance().ConnTracker().CloseConnByInbound(inbound.Tag)
+		box.SessionTracker().CloseByInbound(inbound.Tag)
 
 		inboundConfig, err := inbound.MarshalJSON()
 		if err != nil {
