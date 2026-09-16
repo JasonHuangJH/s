@@ -1,4 +1,4 @@
-name: Sync Upstream Releases
+name: Sync Releases
 
 on:
   schedule:
