@@ -1,0 +1,58 @@
+name: Sync Upstream Releases
+
+on:
+  schedule:
+    - cron: '0 0 * * *' # 每天自动检查同步一次
+  workflow_dispatch: # 支持在 Actions 页面手动触发
+
+jobs:
+  sync-releases:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Sync Releases from Upstream
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          UPSTREAM_REPO: "alireza0/s-ui" # ⚠️ 替换为原仓库的 用户名/仓库名
+        run: |
+          # 1. 获取 upstream 的最新 5 个 Releases
+          releases=$(gh api repos/$UPSTREAM_REPO/releases --jq '.[0:5][] | .tag_name')
+
+          for tag in $releases; do
+            # 检查 Fork 仓库是否已经存在该 Release
+            if ! gh release view "$tag" >/dev/null 2>&1; then
+              echo "发现新 Release: $tag，开始同步..."
+
+              # 获取 release 详细元数据
+              rel_json=$(gh api repos/$UPSTREAM_REPO/releases/tags/$tag)
+              title=$(echo "$rel_json" | jq -r '.name // .tag_name')
+              body=$(echo "$rel_json" | jq -r '.body // ""')
+              is_draft=$(echo "$rel_json" | jq -r '.draft')
+              is_prerelease=$(echo "$rel_json" | jq -r '.prerelease')
+
+              mkdir -p tmp_assets
+              
+              # 下载原仓库 Release 的所有附件资产
+              gh release download "$tag" --repo "$UPSTREAM_REPO" --dir tmp_assets || true
+
+              # 构建创建 Release 的命令参数
+              flags=()
+              [ "$is_draft" = "true" ] && flags+=("--draft")
+              [ "$is_prerelease" = "true" ] && flags+=("--prerelease")
+
+              # 在 Fork 仓库中发布 Release 及其附件
+              if [ -n "$(ls -A tmp_assets)" ]; then
+                gh release create "$tag" tmp_assets/* --title "$title" --notes "$body" "${flags[@]}"
+              else
+                gh release create "$tag" --title "$title" --notes "$body" "${flags[@]}"
+              fi
+
+              rm -rf tmp_assets
+            else
+              echo "Release $tag 已存在，跳过。"
+            fi
+          done
