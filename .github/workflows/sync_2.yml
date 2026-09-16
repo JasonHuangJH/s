@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -20,7 +20,7 @@ jobs:
           UPSTREAM_REPO: "alireza0/s-ui" # ⚠️ 替换为原仓库的 用户名/仓库名
         run: |
           # 1. 获取 upstream 的最新 5 个 Releases
-          releases=$(gh api repos/$UPSTREAM_REPO/releases --jq '.[0:5][] | .tag_name')
+          releases=$(gh api repos/$UPSTREAM_REPO/releases --jq '.[0:10][] | .tag_name')
 
           for tag in $releases; do
             # 检查 Fork 仓库是否已经存在该 Release
