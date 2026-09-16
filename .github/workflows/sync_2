@@ -1,0 +1,18 @@
+name: Sync Releases
+
+on:
+  schedule:
+    - cron: '0 0 * * *'  # 每天零点自动同步
+  workflow_dispatch:      # 支持网页手动触发
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write     # 必须开启写入权限，用于创建 Release 和 Tag
+    steps:
+      - name: Sync Releases from Upstream
+        uses: taiki-e/github-actions/sync-release@v1
+        with:
+          upstream_repository: 'alireza0/s-ui'
+          token: ${{ secrets.GITHUB_TOKEN }}
